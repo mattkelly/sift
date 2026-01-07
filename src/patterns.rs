@@ -420,35 +420,27 @@ fn is_potential_secret(s: &str) -> bool {
 fn is_high_entropy_secret(s: &str) -> bool {
     let len = s.len();
     // Must be reasonable length
-    if len < 28 || len > 100 {
+    if len < 24 || len > 200 {
         return false;
     }
-    // Exclude paths, package names, URLs
-    if s.contains('/') || s.contains('.') || s.contains("::") {
+    // Must be mostly alphanumeric
+    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '+' || c == '/' || c == '=' || c == '.') {
         return false;
     }
-    // Exclude likely symbol names (CGO, mangled)
-    if s.starts_with('_') || s.starts_with("Cfunc") || s.contains("__") {
-        return false;
-    }
-    // Must be only alphanumeric with limited special chars
-    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '+' || c == '=') {
+    // Skip if it looks like a normal word/path
+    if s.contains(' ') || s.starts_with('/') || s.starts_with('.') {
         return false;
     }
     // Calculate character class diversity
     let has_upper = s.chars().any(|c| c.is_ascii_uppercase());
     let has_lower = s.chars().any(|c| c.is_ascii_lowercase());
     let has_digit = s.chars().any(|c| c.is_ascii_digit());
+    let has_special = s.chars().any(|c| c == '_' || c == '-' || c == '+' || c == '/');
 
-    // Must have mixed case AND digits (real secrets almost always do)
-    if !(has_upper && has_lower && has_digit) {
-        return false;
-    }
+    let class_count = has_upper as u8 + has_lower as u8 + has_digit as u8 + has_special as u8;
 
-    // Check digit ratio - secrets typically have 10-50% digits
-    let digit_count = s.chars().filter(|c| c.is_ascii_digit()).count();
-    let digit_ratio = digit_count as f32 / len as f32;
-    digit_ratio >= 0.10 && digit_ratio <= 0.5
+    // High entropy secrets typically have 3+ character classes and good length
+    class_count >= 3 && len >= 32
 }
 
 /// Check if a string looks like it contains actual words (has spaces or mixed case)
