@@ -16,7 +16,8 @@ use sift::{Category, Encoding};
     about = "Intelligent binary string extraction and analysis",
     long_about = "Extract and categorize strings from binary files. Like strings, but smarter.\n\n\
                   Automatically detects URLs, paths, UUIDs, emails, IPs, versions, dates, hashes,\n\
-                  debug messages, identifiers, config values, commands, and other interesting strings.\n\n\
+                  secrets (API keys, tokens), debug messages, identifiers, config values, commands,\n\
+                  and other interesting strings.\n\n\
                   With no arguments, reads from stdin (if piped) or scans current directory."
 )]
 struct Cli {
@@ -32,7 +33,7 @@ struct Cli {
     #[arg(short = 'e', long, value_name = "ENCODINGS", value_delimiter = ',')]
     encoding: Option<Vec<String>>,
 
-    /// Filter by category (url, path, uuid, email, ipv4, ipv6, version, date, hash, debug, ident, config, cmd, interesting)
+    /// Filter by category (url, path, uuid, email, ipv4, ipv6, version, date, hash, secret, debug, ident, config, cmd, interesting)
     #[arg(short = 't', long = "type", value_name = "TYPES", value_delimiter = ',')]
     types: Option<Vec<String>>,
 

@@ -165,11 +165,6 @@ static SECRET_AWS_KEY_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^AKIA[0-9A-Z]{16}$").unwrap()
 });
 
-// AWS secret access keys (40 char base64)
-static SECRET_AWS_SECRET_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[A-Za-z0-9+/]{40}$").unwrap()
-});
-
 // Slack tokens
 static SECRET_SLACK_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^xox[baprs]-[0-9A-Za-z-]+$").unwrap()
@@ -178,11 +173,6 @@ static SECRET_SLACK_PATTERN: Lazy<Regex> = Lazy::new(|| {
 // Stripe keys
 static SECRET_STRIPE_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(sk|pk)_(live|test)_[0-9a-zA-Z]{24,}$").unwrap()
-});
-
-// Generic high-entropy base64 that might be a key (32+ chars, looks like base64)
-static SECRET_GENERIC_KEY_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[A-Za-z0-9+/=_-]{32,}$").unwrap()
 });
 
 // Private key markers

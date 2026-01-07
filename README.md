@@ -8,11 +8,12 @@ Intelligent binary string extraction and analysis. Like `strings`, but smarter.
   - URLs, paths, UUIDs, emails
   - IPv4/IPv6 addresses
   - Versions, dates, hashes
+  - **Secrets** (API keys, tokens, private keys - GitHub, AWS, Slack, Stripe, JWTs, high-entropy strings)
   - Debug/error messages (format strings, error keywords)
   - Identifiers (function names, variables)
   - Config values (key=value patterns)
   - Commands (AT commands, etc.)
-  - Other interesting strings (passwords, tokens, firmware-related terms)
+  - Other interesting strings (firmware-related terms)
 
 - **Multiple encodings** - ASCII, UTF-8, UTF-16 (LE/BE), UTF-32, Latin-1
 
@@ -57,7 +58,7 @@ sift -v binary
 -n, --min-length <LENGTH>   Minimum string length [default: 4]
 -e, --encoding <ENCODINGS>  Encodings: ascii, utf8, utf16, utf16le, utf16be, utf32, latin1, all
 -t, --type <TYPES>          Filter: url, path, uuid, email, ipv4, ipv6, version, date, hash,
-                            debug, ident, config, cmd, interesting
+                            secret, debug, ident, config, cmd, interesting
 -o, --output <FORMAT>       Output: human, json, summary, raw [default: human]
 -r, --recursive             Scan directories recursively
 -v, --verbose               Show all strings, including uncategorized
@@ -81,6 +82,10 @@ firmware.bin (2.1 MB)
    /var/log/system.log
    ...
 
+ Secrets (2)
+   ghp_1234567890abcdefghijABCDEFGHIJKLMNOP
+   AKIAIOSFODNN7EXAMPLE
+
  Debug/Errors (28)
    %s: failed to open %s
    Error: connection refused
@@ -94,7 +99,7 @@ firmware.bin (2.1 MB)
    ...
 
 ────────────────────────────────────────
-  Total: 1,234  Categorized: 156 (12.6%)
+  Total: 1,234  Categorized: 158 (12.8%)
 ```
 
 ## License
