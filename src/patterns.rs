@@ -226,26 +226,50 @@ impl PatternMatcher {
 
     fn matches_category(&self, s: &str, category: Category) -> bool {
         match category {
-            Category::Url => URL_PATTERN.is_match(s),
-            Category::Path => {
-                PATH_UNIX_PATTERN.is_match(s)
-                    || PATH_WINDOWS_PATTERN.is_match(s)
-                    || PATH_RELATIVE_PATTERN.is_match(s)
+            // Quick pre-filters before expensive regex calls
+            Category::Url => {
+                (s.starts_with("http") || s.starts_with("ftp") || s.starts_with("file"))
+                    && URL_PATTERN.is_match(s)
             }
-            Category::Uuid => UUID_PATTERN.is_match(s),
-            Category::Email => EMAIL_PATTERN.is_match(s),
-            Category::Ipv4 => IPV4_PATTERN.is_match(s),
-            Category::Ipv6 => IPV6_PATTERN.is_match(s),
-            Category::Version => VERSION_PATTERN.is_match(s),
-            Category::Date => DATE_ISO_PATTERN.is_match(s) || DATE_COMMON_PATTERN.is_match(s),
+            Category::Path => {
+                (s.starts_with('/') || s.starts_with("./") || (s.len() > 2 && s.as_bytes()[1] == b':'))
+                    && (PATH_UNIX_PATTERN.is_match(s)
+                        || PATH_WINDOWS_PATTERN.is_match(s)
+                        || PATH_RELATIVE_PATTERN.is_match(s))
+            }
+            Category::Uuid => {
+                s.len() == 36 && s.contains('-') && UUID_PATTERN.is_match(s)
+            }
+            Category::Email => {
+                s.contains('@') && s.contains('.') && EMAIL_PATTERN.is_match(s)
+            }
+            Category::Ipv4 => {
+                s.len() >= 7 && s.len() <= 15 && s.contains('.')
+                    && s.chars().all(|c| c.is_ascii_digit() || c == '.')
+                    && IPV4_PATTERN.is_match(s)
+            }
+            Category::Ipv6 => {
+                s.contains(':') && IPV6_PATTERN.is_match(s)
+            }
+            Category::Version => {
+                s.contains('.') && VERSION_PATTERN.is_match(s)
+            }
+            Category::Date => {
+                (s.contains('-') || s.contains('/'))
+                    && (DATE_ISO_PATTERN.is_match(s) || DATE_COMMON_PATTERN.is_match(s))
+            }
             Category::Hash => {
-                HASH_MD5_PATTERN.is_match(s)
-                    || HASH_SHA1_PATTERN.is_match(s)
-                    || HASH_SHA256_PATTERN.is_match(s)
+                let len = s.len();
+                (len == 32 || len == 40 || len == 64)
+                    && s.chars().all(|c| c.is_ascii_hexdigit())
+                    && (HASH_MD5_PATTERN.is_match(s)
+                        || HASH_SHA1_PATTERN.is_match(s)
+                        || HASH_SHA256_PATTERN.is_match(s))
             }
             Category::Debug => {
                 !is_mangled_symbol(s)
                     && !looks_like_hash(s)
+                    && (s.contains('%') || has_debug_keyword(s))
                     && (DEBUG_FORMAT_PATTERN.is_match(s) || DEBUG_KEYWORD_PATTERN.is_match(s))
             }
             Category::Identifier => {
@@ -253,13 +277,20 @@ impl PatternMatcher {
                     && s.len() <= 50
                     && !is_mangled_symbol(s)
                     && !looks_like_hash(s)
+                    && (s.contains('_') || has_case_transition(s))
                     && (IDENT_CAMEL_CASE.is_match(s)
                         || IDENT_PASCAL_CASE.is_match(s)
                         || IDENT_SNAKE_CASE.is_match(s)
                         || IDENT_SCREAMING_SNAKE.is_match(s))
             }
-            Category::Config => !is_mangled_symbol(s) && CONFIG_KEY_VALUE.is_match(s),
-            Category::Command => COMMAND_AT_PATTERN.is_match(s),
+            Category::Config => {
+                (s.contains('=') || s.contains(':'))
+                    && !is_mangled_symbol(s)
+                    && CONFIG_KEY_VALUE.is_match(s)
+            }
+            Category::Command => {
+                s.starts_with("AT") && COMMAND_AT_PATTERN.is_match(s)
+            }
             Category::Interesting => {
                 s.len() >= 8
                     && !is_mangled_symbol(s)
@@ -269,6 +300,25 @@ impl PatternMatcher {
             Category::Other => false,
         }
     }
+}
+
+/// Quick check for debug-related keywords without regex
+fn has_debug_keyword(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    lower.contains("error") || lower.contains("fail") || lower.contains("warn")
+        || lower.contains("debug") || lower.contains("assert") || lower.contains("invalid")
+}
+
+/// Check if string has case transitions (for camelCase/PascalCase detection)
+fn has_case_transition(s: &str) -> bool {
+    let mut prev_lower = false;
+    for c in s.chars() {
+        if c.is_uppercase() && prev_lower {
+            return true;
+        }
+        prev_lower = c.is_lowercase();
+    }
+    false
 }
 
 /// Check if a string looks like a mangled C++/Rust symbol

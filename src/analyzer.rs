@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use rayon::prelude::*;
+
 use crate::extractor::ExtractedString;
 use crate::patterns::{Category, PatternMatcher};
 
@@ -52,23 +54,38 @@ impl Analyzer {
         file_size: usize,
     ) -> AnalysisResult {
         let total_strings = strings.len();
+
+        // Step 1: Deduplicate strings and count occurrences BEFORE pattern matching
+        let mut string_counts: HashMap<String, usize> = HashMap::new();
+        for s in strings {
+            let value = s.value.trim().to_string();
+            if !value.is_empty() {
+                *string_counts.entry(value).or_insert(0) += 1;
+            }
+        }
+
+        // Step 2: Categorize unique strings in parallel
+        let unique_strings: Vec<(String, usize)> = string_counts.into_iter().collect();
+        let categorized_results: Vec<(String, usize, Option<Category>)> = unique_strings
+            .into_par_iter()
+            .map(|(value, count)| {
+                let category = self.matcher.categorize(&value);
+                (value, count, category)
+            })
+            .collect();
+
+        // Step 3: Collect results into categories
         let mut categorized: HashMap<Category, HashMap<String, usize>> = HashMap::new();
         let mut uncategorized: HashMap<String, usize> = HashMap::new();
 
-        for s in strings {
-            let value = s.value.trim().to_string();
-            if value.is_empty() {
-                continue;
-            }
-
-            if let Some(category) = self.matcher.categorize(&value) {
-                *categorized
-                    .entry(category)
+        for (value, count, category) in categorized_results {
+            if let Some(cat) = category {
+                categorized
+                    .entry(cat)
                     .or_default()
-                    .entry(value)
-                    .or_insert(0) += 1;
+                    .insert(value, count);
             } else if self.include_uncategorized {
-                *uncategorized.entry(value).or_insert(0) += 1;
+                uncategorized.insert(value, count);
             }
         }
 
