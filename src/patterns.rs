@@ -15,6 +15,7 @@ pub enum Category {
     Version,
     Date,
     Hash,
+    Secret,
     Debug,
     Identifier,
     Config,
@@ -35,6 +36,7 @@ impl Category {
             Category::Version,
             Category::Date,
             Category::Hash,
+            Category::Secret,
             Category::Debug,
             Category::Identifier,
             Category::Config,
@@ -55,6 +57,7 @@ impl Category {
             "version" | "versions" | "ver" => Some(Category::Version),
             "date" | "dates" => Some(Category::Date),
             "hash" | "hashes" => Some(Category::Hash),
+            "secret" | "secrets" | "token" | "tokens" | "key" | "keys" | "credential" | "credentials" => Some(Category::Secret),
             "debug" | "dbg" | "error" | "log" => Some(Category::Debug),
             "identifier" | "ident" | "id" | "symbol" | "sym" => Some(Category::Identifier),
             "config" | "cfg" | "setting" | "settings" => Some(Category::Config),
@@ -75,6 +78,7 @@ impl Category {
             Category::Version => "Versions",
             Category::Date => "Dates",
             Category::Hash => "Hashes",
+            Category::Secret => "Secrets",
             Category::Debug => "Debug/Errors",
             Category::Identifier => "Identifiers",
             Category::Config => "Config",
@@ -148,6 +152,47 @@ static HASH_SHA1_PATTERN: Lazy<Regex> = Lazy::new(|| {
 
 static HASH_SHA256_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^[0-9a-f]{64}$").unwrap()
+});
+
+// Secret/credential patterns - API keys, tokens, etc.
+// GitHub tokens
+static SECRET_GITHUB_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}$").unwrap()
+});
+
+// AWS access key IDs
+static SECRET_AWS_KEY_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^AKIA[0-9A-Z]{16}$").unwrap()
+});
+
+// AWS secret access keys (40 char base64)
+static SECRET_AWS_SECRET_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[A-Za-z0-9+/]{40}$").unwrap()
+});
+
+// Slack tokens
+static SECRET_SLACK_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^xox[baprs]-[0-9A-Za-z-]+$").unwrap()
+});
+
+// Stripe keys
+static SECRET_STRIPE_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^(sk|pk)_(live|test)_[0-9a-zA-Z]{24,}$").unwrap()
+});
+
+// Generic high-entropy base64 that might be a key (32+ chars, looks like base64)
+static SECRET_GENERIC_KEY_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[A-Za-z0-9+/=_-]{32,}$").unwrap()
+});
+
+// Private key markers
+static SECRET_PRIVATE_KEY_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----").unwrap()
+});
+
+// JWT tokens (header.payload.signature)
+static SECRET_JWT_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$").unwrap()
 });
 
 // Debug/error message patterns - format strings and error keywords
@@ -266,6 +311,16 @@ impl PatternMatcher {
                         || HASH_SHA1_PATTERN.is_match(s)
                         || HASH_SHA256_PATTERN.is_match(s))
             }
+            Category::Secret => {
+                is_potential_secret(s)
+                    && (SECRET_GITHUB_PATTERN.is_match(s)
+                        || SECRET_AWS_KEY_PATTERN.is_match(s)
+                        || SECRET_SLACK_PATTERN.is_match(s)
+                        || SECRET_STRIPE_PATTERN.is_match(s)
+                        || SECRET_PRIVATE_KEY_PATTERN.is_match(s)
+                        || SECRET_JWT_PATTERN.is_match(s)
+                        || is_high_entropy_secret(s))
+            }
             Category::Debug => {
                 !is_mangled_symbol(s)
                     && !looks_like_hash(s)
@@ -346,6 +401,56 @@ fn looks_like_hash(s: &str) -> bool {
         return true;
     }
     false
+}
+
+/// Quick pre-filter for potential secrets
+fn is_potential_secret(s: &str) -> bool {
+    let len = s.len();
+    // Most tokens are 20-200 chars
+    if len < 20 || len > 500 {
+        return false;
+    }
+    // Check for common prefixes
+    if s.starts_with("ghp_") || s.starts_with("gho_") || s.starts_with("ghu_")
+        || s.starts_with("ghs_") || s.starts_with("ghr_") || s.starts_with("github_pat_")
+        || s.starts_with("AKIA") || s.starts_with("xox")
+        || s.starts_with("sk_live_") || s.starts_with("sk_test_")
+        || s.starts_with("pk_live_") || s.starts_with("pk_test_")
+        || s.starts_with("eyJ")  // JWT
+        || s.contains("PRIVATE KEY")
+    {
+        return true;
+    }
+    // For generic secrets, check if it's mostly alphanumeric (base64-ish)
+    let alphanum = s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-' || *c == '+' || *c == '/' || *c == '=').count();
+    alphanum > len * 9 / 10
+}
+
+/// Check if string has high entropy (likely a secret key)
+fn is_high_entropy_secret(s: &str) -> bool {
+    let len = s.len();
+    // Must be reasonable length
+    if len < 24 || len > 200 {
+        return false;
+    }
+    // Must be mostly alphanumeric
+    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '+' || c == '/' || c == '=' || c == '.') {
+        return false;
+    }
+    // Skip if it looks like a normal word/path
+    if s.contains(' ') || s.starts_with('/') || s.starts_with('.') {
+        return false;
+    }
+    // Calculate character class diversity
+    let has_upper = s.chars().any(|c| c.is_ascii_uppercase());
+    let has_lower = s.chars().any(|c| c.is_ascii_lowercase());
+    let has_digit = s.chars().any(|c| c.is_ascii_digit());
+    let has_special = s.chars().any(|c| c == '_' || c == '-' || c == '+' || c == '/');
+
+    let class_count = has_upper as u8 + has_lower as u8 + has_digit as u8 + has_special as u8;
+
+    // High entropy secrets typically have 3+ character classes and good length
+    class_count >= 3 && len >= 32
 }
 
 /// Check if a string looks like it contains actual words (has spaces or mixed case)
